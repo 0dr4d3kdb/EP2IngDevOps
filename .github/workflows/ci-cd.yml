@@ -33,11 +33,12 @@ jobs:
           python -m pip install pytest pytest-cov
 
       - name: Ejecutar pruebas
+        env:
+          COVERAGE_RUN_RELATIVE_FILES: "true"
         run: |
           python -m pytest tests/ -v \
-            --cov=catalog \
-            --cov=orders \
-            --cov-report=xml \
+            --cov=. \
+            --cov-report=xml:coverage.xml \
             --cov-report=html \
             --cov-fail-under=80
 
