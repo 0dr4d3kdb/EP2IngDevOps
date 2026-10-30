@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Microservicios: catálogo y órdenes</title>
+</head>
+<body>
+
+<h1>Catálogo + Órdenes</h1>
+
+<h2>1. Catálogo (catalog-service :8002)</h2>
+<button onclick="loadProducts()">Cargar productos</button>
+<ul id="product-list"></ul>
+
+<h2>2. Crear orden (orders-service :8001)</h2>
+<label>Producto:
+  <select id="product"></select>
+</label>
+<label>Cantidad:
+  <input id="quantity" type="number" value="1" min="1">
+</label>
+<button onclick="createOrder()">Crear orden</button>
+
+<h2>3. Órdenes creadas</h2>
+<button onclick="loadOrders()">Refrescar órdenes</button>
+<ul id="order-list"></ul>
+
+<hr>
+<p id="status">Cargando catálogo...</p>
+
+<script>
+const CATALOG_URL = "http://localhost:8002";
+const ORDERS_URL = "http://localhost:8001";
+
+const productList = document.getElementById("product-list");
+const productSelect = document.getElementById("product");
+const orderList = document.getElementById("order-list");
+const statusBox = document.getElementById("status");
+
+function show(message) {
+  statusBox.textContent = message;
+}
+
+function formatCLP(value) {
+  return "$" + value.toLocaleString("es-CL");
+}
+
+async function loadProducts() {
+  show("Consultando catálogo...");
+  try {
+    const response = await fetch(CATALOG_URL + "/products");
+    if (!response.ok) throw new Error("HTTP " + response.status);
+    const products = await response.json();
+
+    productList.innerHTML = "";
+    productSelect.innerHTML = "";
+    for (const product of products) {
+      const item = document.createElement("li");
+      item.textContent = product.id + " - " + product.name + " (" + formatCLP(product.price) + ")";
+      productList.appendChild(item);
+
+      const option = document.createElement("option");
+      option.value = product.id;
+      option.textContent = product.name + " (" + formatCLP(product.price) + ")";
+      productSelect.appendChild(option);
+    }
+    show("Catálogo cargado: " + products.length + " productos.");
+  } catch (error) {
+    show("Error al consultar el catálogo: " + error.message);
+  }
+}
+
+async function createOrder() {
+  const productId = productSelect.value;
+  const quantity = document.getElementById("quantity").value;
+  if (!productId) {
+    show("Primero carga el catálogo.");
+    return;
+  }
+
+  show("Creando orden...");
+  try {
+    const response = await fetch(
+      ORDERS_URL + "/orders?product_id=" + encodeURIComponent(productId) + "&quantity=" + quantity,
+      { method: "POST" }
+    );
+    const data = await response.json();
+    if (!response.ok) throw new Error("HTTP " + response.status + " - " + data.detail);
+    show("Orden " + data.id + " creada: " + data.quantity + " x " + data.name + " = " + formatCLP(data.total));
+    loadOrders();
+  } catch (error) {
+    show("Error al crear la orden: " + error.message);
+  }
+}
+
+async function loadOrders() {
+  try {
+    const response = await fetch(ORDERS_URL + "/orders");
+    if (!response.ok) throw new Error("HTTP " + response.status);
+    const orders = await response.json();
+
+    orderList.innerHTML = "";
+    for (const order of orders) {
+      const item = document.createElement("li");
+      item.textContent = "#" + order.id + " - " + order.quantity + " x " + order.name +
+        " (producto " + order.product_id + ") = " + formatCLP(order.total);
+      orderList.appendChild(item);
+    }
+  } catch (error) {
+    show("Error al consultar las órdenes: " + error.message);
+  }
+}
+
+loadProducts();
+loadOrders();
+</script>
+
+</body>
+</html>
