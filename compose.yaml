@@ -1,0 +1,55 @@
+services:
+  catalog:
+    build:
+      context: .
+      dockerfile: catalog/Dockerfile
+    image: catalog-service:1.0
+    ports:
+      - "127.0.0.1:8002:8002"
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8002/health', timeout=2)"
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    cpus: 0.50
+    mem_limit: 256m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  orders:
+    build:
+      context: .
+      dockerfile: orders/Dockerfile
+    image: orders-service:1.0
+    ports:
+      - "127.0.0.1:8001:8001"
+    environment:
+      CATALOG_URL: http://catalog:8002
+    depends_on:
+      catalog:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8001/health', timeout=2)"
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    cpus: 0.50
+    mem_limit: 256m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL

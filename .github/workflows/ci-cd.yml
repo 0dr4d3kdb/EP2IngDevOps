@@ -1,0 +1,170 @@
+
+name: CI/CD Microservicios
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+
+  tests:
+    name: Pruebas y cobertura
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install pytest pytest-cov
+
+      - name: Ejecutar pruebas
+        run: |
+          python -m pytest tests/ -v \
+            --cov=catalog \
+            --cov=orders \
+            --cov-report=xml \
+            --cov-report=html \
+            --cov-fail-under=80
+
+      - name: Guardar reporte de cobertura
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            coverage.xml
+            htmlcov/
+
+  security:
+    name: Seguridad Snyk
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install -r requirements.txt
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Instalar Snyk
+        run: npm install -g snyk
+
+      - name: Escanear dependencias con Snyk
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        run: |
+          snyk test \
+            --file=requirements.txt \
+            --package-manager=pip \
+            --severity-threshold=high
+
+  sonar:
+    name: Calidad SonarCloud
+    runs-on: ubuntu-latest
+    needs: tests
+
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Descargar reporte de cobertura
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-report
+
+      - name: Analizar con SonarCloud
+        uses: SonarSource/sonarqube-scan-action@v6
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.qualitygate.wait=true
+
+  build:
+    name: Construir imágenes Docker
+    runs-on: ubuntu-latest
+    needs: [tests, security, sonar]
+
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+
+      - name: Construir imagen Catalog
+        run: |
+          docker build \
+            -f catalog/Dockerfile \
+            -t catalog-service:${{ github.sha }} .
+
+      - name: Construir imagen Orders
+        run: |
+          docker build \
+            -f orders/Dockerfile \
+            -t orders-service:${{ github.sha }} .
+
+  deploy:
+    name: Despliegue con Docker Compose
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name != 'pull_request'
+
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+
+      - name: Validar Docker Compose
+        run: docker compose config
+
+      - name: Levantar contenedores
+        run: |
+          docker compose up -d --build --wait
+
+      - name: Verificar Catalog
+        run: |
+          curl --fail http://localhost:8002/products
+
+      - name: Verificar Orders
+        run: |
+          curl --fail http://localhost:8001/orders
+
+      - name: Prueba de integración
+        run: |
+          curl --fail -X POST \
+            "http://localhost:8001/orders?product_id=p1&quantity=2"
+
+      - name: Mostrar estado de contenedores
+        if: always()
+        run: |
+          docker compose ps
+          docker compose logs --tail=50
+
+      - name: Detener contenedores
+        if: always()
+        run: |
+          docker compose down

@@ -4,6 +4,7 @@ from itertools import count
 import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi import Query
 
 app = FastAPI(title="orders")
 
@@ -21,7 +22,7 @@ order_ids = count(1)
 
 
 @app.post("/orders")
-def create_order(product_id: str, quantity: int = 1):
+def create_order(product_id: str, quantity: int = Query(default=1, ge=1)):
     try:
         response = httpx.get(f"{CATALOG_URL}/products/{product_id}", timeout=3)
     except httpx.HTTPError:
@@ -47,3 +48,7 @@ def create_order(product_id: str, quantity: int = 1):
 @app.get("/orders")
 def list_orders():
     return list(ORDERS.values())
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}

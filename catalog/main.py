@@ -28,3 +28,7 @@ def get_product(product_id: str):
     if product is None:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
     return {"id": product_id, **product}
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
